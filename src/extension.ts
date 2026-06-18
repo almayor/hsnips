@@ -84,12 +84,29 @@ export async function expandSnippet(
     { undoStopAfter: false, undoStopBefore: !snippetExpansion }
   );
 
-  await editor.insertSnippet(snippetInstance.snippetString, insertionRange, {
-    undoStopAfter: false,
-    undoStopBefore: false,
-  });
+  // When a snippet has no tabstops (selectedPlaceholder == 0), it is a pure text replacement
+  // (e.g. greek letters, symbol shorthands). Using editor.edit() instead of editor.insertSnippet()
+  // for these avoids destroying the active snippet session's tabstops, which is a regression
+  // introduced in VS Code 1.86+ (see https://github.com/microsoft/vscode/issues/214757).
+  if (snippetInstance.selectedPlaceholder == 0) {
+    let plainText = snippetInstance.snippetString.value.replace(/\$0/g, '').replace(/\\\$/g, '$');
+    await editor.edit(
+      (eb) => {
+        eb.insert(
+          insertionRange instanceof vscode.Range ? insertionRange.start : insertionRange,
+          plainText
+        );
+      },
+      { undoStopAfter: false, undoStopBefore: false }
+    );
+  } else {
+    await editor.insertSnippet(snippetInstance.snippetString, insertionRange, {
+      undoStopAfter: false,
+      undoStopBefore: false,
+    });
+    SNIPPET_STACK.unshift(snippetInstance);
+  }
 
-  if (snippetInstance.selectedPlaceholder != 0) SNIPPET_STACK.unshift(snippetInstance);
   insertingSnippet = false;
 }
 
